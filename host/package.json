@@ -1,0 +1,18 @@
+{
+  "name": "claude-led",
+  "version": "0.1.0",
+  "description": "Daemon que reflete o estado de sessões do Claude Code num LED USB (RP2040-Zero).",
+  "bin": {
+    "claude-led": "./claude-led-daemon.js"
+  },
+  "main": "claude-led-daemon.js",
+  "scripts": {
+    "start": "node claude-led-daemon.js"
+  },
+  "dependencies": {
+    "serialport": "^12.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

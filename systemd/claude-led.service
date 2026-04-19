@@ -1,0 +1,13 @@
+[Unit]
+Description=Claude Code LED daemon (RP2040-Zero)
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/node %h/.claude-led/host/claude-led-daemon.js
+Restart=always
+RestartSec=3
+# Não é necessário rodar como root: adicione seu usuário aos grupos dialout/plugdev.
+
+[Install]
+WantedBy=default.target

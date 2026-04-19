@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  LaunchAgent do daemon claude-led (macOS).
+
+  Instalação:
+    1. Substitua __NODE__ pelo caminho absoluto do node (`which node`).
+    2. Substitua __HOME__ pelo valor de $HOME.
+    3. Copie para ~/Library/LaunchAgents/com.carromeu.claude-led.plist
+    4. Carregue: launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.carromeu.claude-led.plist
+
+  Descarregar: launchctl bootout gui/$(id -u)/com.carromeu.claude-led
+  Reiniciar:   launchctl kickstart -k gui/$(id -u)/com.carromeu.claude-led
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.carromeu.claude-led</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__NODE__</string>
+        <string>__HOME__/.claude-led/host/claude-led-daemon.js</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>ThrottleInterval</key>
+    <integer>5</integer>
+
+    <key>StandardOutPath</key>
+    <string>__HOME__/.claude-led/daemon.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>__HOME__/.claude-led/daemon.err.log</string>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>

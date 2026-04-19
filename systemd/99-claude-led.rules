@@ -1,0 +1,4 @@
+# /etc/udev/rules.d/99-claude-led.rules
+# Acesso sem sudo à placa CircuitPython (Adafruit VID 0x239A e RPi VID 0x2E8A)
+SUBSYSTEM=="tty", ATTRS{idVendor}=="239a", MODE="0660", GROUP="dialout", TAG+="uaccess"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="2e8a", MODE="0660", GROUP="dialout", TAG+="uaccess"
