@@ -1,6 +1,9 @@
 # code.py — Claude Code Status LED
 # Target: Waveshare RP2040-Zero (WS2812 em GP16) rodando CircuitPython 9.x
 #
+# Usa o módulo built-in `neopixel_write` (não a lib `neopixel` externa),
+# evitando dependência em /lib/neopixel.mpy. Basta o core do CircuitPython.
+#
 # Protocolo serial (USB-CDC data, 115200 8N1, line-based):
 #   OFF            -> apaga
 #   RED_BLINK      -> vermelho piscando (atenção: sessão esperando input)
@@ -12,17 +15,30 @@
 
 import time
 import board
-import neopixel
+import digitalio
+import neopixel_write
 import usb_cdc
-import supervisor
 
 # ---------- Hardware ----------
-# RP2040-Zero: WS2812 onboard em GP16 (board.NEOPIXEL no CircuitPython recente)
-pixel = neopixel.NeoPixel(board.NEOPIXEL, 1, brightness=0.25, auto_write=True)
+# RP2040-Zero: WS2812 onboard em GP16 (board.NEOPIXEL no CircuitPython)
+_pin = digitalio.DigitalInOut(board.NEOPIXEL)
+_pin.direction = digitalio.Direction.OUTPUT
+
+# WS2812 ordem de bytes é GRB.
+BRIGHTNESS = 0.25  # 0.0..1.0 — limita intensidade máxima para não ofuscar
+
+
+def pixel_rgb(r: int, g: int, b: int):
+    """Escreve uma cor RGB 0..255 no WS2812 (aplica brightness)."""
+    r = int(r * BRIGHTNESS) & 0xFF
+    g = int(g * BRIGHTNESS) & 0xFF
+    b = int(b * BRIGHTNESS) & 0xFF
+    neopixel_write.neopixel_write(_pin, bytearray([g, r, b]))
+
 
 # ---------- Serial ----------
 # Usamos o canal CDC "data" (segundo canal USB serial), deixando o REPL livre.
-# Se preferir usar só um canal, troque por usb_cdc.console (ajuste boot.py).
+# Se `usb_cdc.data` estiver None (boot.py não habilitou), caímos para o console.
 serial = usb_cdc.data if usb_cdc.data is not None else usb_cdc.console
 
 # ---------- Estado ----------
@@ -45,13 +61,13 @@ rx_buffer = bytearray()
 def apply_state():
     """Aplica a cor atual no LED com base em `state` e `blink_on`."""
     if state == STATE_OFF:
-        pixel[0] = (0, 0, 0)
+        pixel_rgb(0, 0, 0)
     elif state == STATE_GREEN:
-        pixel[0] = (0, 255, 0)
+        pixel_rgb(0, 255, 0)
     elif state == STATE_GREEN_BLINK:
-        pixel[0] = (0, 255, 0) if blink_on else (0, 0, 0)
+        pixel_rgb(0, 255, 0) if blink_on else pixel_rgb(0, 0, 0)
     elif state == STATE_RED_BLINK:
-        pixel[0] = (255, 0, 0) if blink_on else (0, 0, 0)
+        pixel_rgb(255, 0, 0) if blink_on else pixel_rgb(0, 0, 0)
 
 
 def handle_command(cmd: str):
@@ -115,9 +131,9 @@ def read_serial_nonblocking():
 
 # Boot: pisca branco rapidamente para indicar que subiu
 for _ in range(2):
-    pixel[0] = (40, 40, 40)
+    pixel_rgb(40, 40, 40)
     time.sleep(0.08)
-    pixel[0] = (0, 0, 0)
+    pixel_rgb(0, 0, 0)
     time.sleep(0.08)
 
 apply_state()
