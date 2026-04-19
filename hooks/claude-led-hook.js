@@ -5,7 +5,7 @@
 //
 // Uso no ~/.claude/settings.json (ver settings.json neste pacote).
 //
-// Args: --event <UserPromptSubmit|Stop|Notification|SessionEnd>
+// Args: --event <UserPromptSubmit|PreToolUse|Stop|Notification|SessionEnd>
 
 'use strict'
 
@@ -72,6 +72,14 @@ function removeState(sessionId) {
     switch (event) {
       case 'UserPromptSubmit':
         // usuário acabou de submeter prompt => Claude está trabalhando
+        writeState(sessionId, 'working', { cwd })
+        break
+
+      case 'PreToolUse':
+        // Claude invocou uma ferramenta => claramente trabalhando.
+        // Serve para sair de 'waiting' quando o usuário responde um prompt
+        // interno (ex.: AskUserQuestion, permission prompt) sem novo
+        // UserPromptSubmit. Ruído é amortecido pelo tick de 1.5s do daemon.
         writeState(sessionId, 'working', { cwd })
         break
 

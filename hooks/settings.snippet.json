@@ -10,6 +10,16 @@
         ]
       }
     ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node $HOME/.claude-led/hooks/claude-led-hook.js --event PreToolUse"
+          }
+        ]
+      }
+    ],
     "Notification": [
       {
         "hooks": [
