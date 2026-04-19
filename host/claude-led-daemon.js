@@ -1,33 +1,48 @@
 #!/usr/bin/env node
-// claude-led-daemon.js
-// Observa ~/.claude-led/sessions/ e dirige o LED do RP2040-Zero via serial.
+// claude-led-daemon.js (v0.2.0)
+// Observa ~/.claude-led/{sessions,channels}/ + detectores passivos
+// e dirige o LED do RP2040-Zero via serial.
 //
-// Regras de agregação:
-//   any waiting              -> RED_BLINK
-//   all working (>=1)        -> GREEN_BLINK
-//   mix working + idle       -> GREEN
-//   zero sessões ou all idle -> OFF
+// Canais suportados (ordenados por prioridade, maior primeiro):
+//
+//   100  rate_limit        RED_SOLID      leitura ~/.claude/claudewatch-usage.json
+//    90  sessions:waiting  RED_FAST       hook Notification (permission/elicit)
+//    75  api_outage        MAGENTA_FAST   polling status.claude.com
+//    60  chrome_devtools   BLUE_BLINK     lsof -iTCP:9222 -sTCP:LISTEN
+//    50  mcp               BLUE_PULSE     hook PreToolUse matcher mcp__*
+//    40  sessions:working  GREEN_BLINK    todas as sessões ativas em working
+//    30  sessions:mix      GREEN          working + idle simultâneos
+//    20  precompact        YELLOW_SLOW    hook PreCompact
+//     0  (default)         OFF            nada ativo
 //
 // Hot-plug: se a placa não estiver presente, o daemon fica tentando reabrir.
-// Sessões "fantasmas" (TTL) são ignoradas depois de IDLE_TTL_MS sem updates.
 
 'use strict'
 
 const fs = require('fs')
 const path = require('path')
 const os = require('os')
+const { execFile } = require('child_process')
 const { SerialPort } = require('serialport')
 
-const STATE_DIR = path.join(os.homedir(), '.claude-led', 'sessions')
+const HOME = os.homedir()
+const CLAUDE_LED_DIR = path.join(HOME, '.claude-led')
+const STATE_DIR = path.join(CLAUDE_LED_DIR, 'sessions')
+const CHANNELS_DIR = path.join(CLAUDE_LED_DIR, 'channels')
+const CLAUDEWATCH_FILE = path.join(HOME, '.claude', 'claudewatch-usage.json')
+
 const IDLE_TTL_MS = 6 * 60 * 60 * 1000 // 6h: limpa sessão esquecida
-const PING_INTERVAL_MS = 10_000        // manda estado a cada 10s (refresca watchdog do firmware)
+const PING_INTERVAL_MS = 10_000        // reenvio periódico (refresca watchdog do firmware)
 const SCAN_INTERVAL_MS = 1_500         // reavaliação principal
-const RECONNECT_INTERVAL_MS = 2_000    // tentativa de reconexão da serial
+
+const RECONNECT_INTERVAL_MS = 2_000
+
+// Caches dos detectores passivos
+const CACHE_RATE_LIMIT_MS = 60_000
+const CACHE_API_OUTAGE_MS = 30_000
+const CACHE_CHROME_DEVTOOLS_MS = 3_000
 
 // --- Detecção da placa --------------------------------------------------------
-// RP2040 CircuitPython: VID 0x239A (Adafruit) em builds oficiais, ou
-// 0x2E8A (Raspberry Pi) dependendo do firmware. Vamos aceitar os dois.
-// Usamos o segundo canal CDC (data), que geralmente é o /dev/ttyACM1.
 const ACCEPTED_VIDS = ['239a', '2e8a']
 
 async function findPort() {
@@ -46,12 +61,11 @@ async function findPort() {
     }))
   }
   if (candidates.length === 0) return null
-  // prefere o segundo canal (CDC data) quando existem dois endpoints do mesmo device
   candidates.sort((a, b) => (a.path || '').localeCompare(b.path || ''))
   return candidates[candidates.length - 1].path
 }
 
-// --- Estado -------------------------------------------------------------------
+// --- Serial state -------------------------------------------------------------
 let port = null
 let lastCommandSent = null
 let lastCommandTs = 0
@@ -69,7 +83,7 @@ function openPort() {
         return
       }
       port = sp
-      lastCommandSent = null // força reenvio
+      lastCommandSent = null
       console.log(`[claude-led] conectado em ${devPath}`)
     })
     sp.on('error', () => { try { sp.close() } catch (_) {} })
@@ -93,10 +107,11 @@ function sendCommand(cmd, { force = false } = {}) {
   } catch (_) { /* noop */ }
 }
 
-// --- Agregação ---------------------------------------------------------------
+// --- Sessions -----------------------------------------------------------------
 function readSessions() {
   try { fs.mkdirSync(STATE_DIR, { recursive: true }) } catch (_) {}
-  const files = fs.readdirSync(STATE_DIR).filter((f) => f.endsWith('.json'))
+  let files = []
+  try { files = fs.readdirSync(STATE_DIR).filter((f) => f.endsWith('.json')) } catch (_) {}
   const now = Date.now()
   const sessions = []
   for (const f of files) {
@@ -106,44 +121,159 @@ function readSessions() {
       const data = JSON.parse(raw)
       if (!data.status) continue
       if (now - (data.updated_at || 0) > IDLE_TTL_MS) {
-        // sessão fantasma: remove
         try { fs.unlinkSync(full) } catch (_) {}
         continue
       }
       sessions.push(data)
-    } catch (_) {
-      // arquivo malformado — ignora
-    }
+    } catch (_) { /* ignore malformed */ }
   }
   return sessions
 }
 
-function decideCommand(sessions) {
-  if (sessions.length === 0) return 'OFF'
-  const hasWaiting = sessions.some((s) => s.status === 'waiting')
-  if (hasWaiting) return 'RED_BLINK'
-  const hasWorking = sessions.some((s) => s.status === 'working')
-  const hasIdle = sessions.some((s) => s.status === 'idle')
-  if (hasWorking && !hasIdle) return 'GREEN_BLINK'
-  if (hasWorking && hasIdle) return 'GREEN'
-  // só idle (ou status desconhecidos)
+// --- Channels (hook-written) --------------------------------------------------
+function readChannels() {
+  try { fs.mkdirSync(CHANNELS_DIR, { recursive: true }) } catch (_) {}
+  let files = []
+  try { files = fs.readdirSync(CHANNELS_DIR).filter((f) => f.endsWith('.json')) } catch (_) {}
+  const now = Date.now()
+  const active = new Set()
+  for (const f of files) {
+    const full = path.join(CHANNELS_DIR, f)
+    try {
+      const raw = fs.readFileSync(full, 'utf8')
+      const data = JSON.parse(raw)
+      if (!data.channel || !data.expires_at) continue
+      if (now > data.expires_at) {
+        try { fs.unlinkSync(full) } catch (_) {}
+        continue
+      }
+      active.add(data.channel)
+    } catch (_) { /* ignore malformed */ }
+  }
+  return active
+}
+
+// --- Passive detectors --------------------------------------------------------
+const detectorCache = {
+  rate_limit: { ts: 0, value: false },
+  api_outage: { ts: 0, value: false },
+  chrome_devtools: { ts: 0, value: false }
+}
+
+function checkRateLimit() {
+  const now = Date.now()
+  if (now - detectorCache.rate_limit.ts < CACHE_RATE_LIMIT_MS) {
+    return detectorCache.rate_limit.value
+  }
+  let hit = false
+  try {
+    const raw = fs.readFileSync(CLAUDEWATCH_FILE, 'utf8')
+    const data = JSON.parse(raw)
+    // Qualquer percentual >= 100 conta como atingido.
+    const pcts = []
+    for (const k of Object.keys(data || {})) {
+      const v = data[k]
+      if (typeof v === 'number') pcts.push(v)
+      if (v && typeof v === 'object' && typeof v.percent === 'number') pcts.push(v.percent)
+      if (v && typeof v === 'object' && typeof v.pct === 'number') pcts.push(v.pct)
+    }
+    hit = pcts.some((p) => p >= 100)
+  } catch (_) {
+    hit = false // arquivo ausente = canal inerte, não é erro
+  }
+  detectorCache.rate_limit = { ts: now, value: hit }
+  return hit
+}
+
+function checkApiOutage() {
+  const now = Date.now()
+  if (now - detectorCache.api_outage.ts < CACHE_API_OUTAGE_MS) {
+    return detectorCache.api_outage.value
+  }
+  // Fire-and-forget: usa o cache anterior enquanto refresca.
+  // Se falhar (sem internet, timeout), assume que não está em outage
+  // para não soar alarme falso durante problemas de rede local.
+  const stamp = now
+  ;(async () => {
+    try {
+      const ctrl = new AbortController()
+      const to = setTimeout(() => ctrl.abort(), 5000)
+      const r = await fetch('https://status.claude.com/api/v2/components.json', { signal: ctrl.signal })
+      clearTimeout(to)
+      const data = await r.json()
+      // Se algum componente "API" tem status != 'operational', marca outage.
+      const components = data?.components || []
+      const outage = components.some((c) => {
+        const name = String(c.name || '').toLowerCase()
+        const status = String(c.status || '').toLowerCase()
+        return name.includes('api') && status && status !== 'operational'
+      })
+      detectorCache.api_outage = { ts: stamp, value: outage }
+    } catch (_) {
+      detectorCache.api_outage = { ts: stamp, value: false }
+    }
+  })()
+  return detectorCache.api_outage.value
+}
+
+function checkChromeDevtools() {
+  const now = Date.now()
+  if (now - detectorCache.chrome_devtools.ts < CACHE_CHROME_DEVTOOLS_MS) {
+    return detectorCache.chrome_devtools.value
+  }
+  const stamp = now
+  // Executa `lsof` async — se alguém escuta a 9222, retorna PID(s) na stdout.
+  execFile('lsof', ['-iTCP:9222', '-sTCP:LISTEN', '-t'], { timeout: 2000 }, (err, stdout) => {
+    const active = !err && stdout && stdout.trim().length > 0
+    detectorCache.chrome_devtools = { ts: stamp, value: !!active }
+  })
+  return detectorCache.chrome_devtools.value
+}
+
+// --- Aggregation --------------------------------------------------------------
+function decideCommand() {
+  const sessions = readSessions()
+  const channels = readChannels()
+
+  // Lista em ordem decrescente de prioridade; primeiro que bater vence.
+  // [prio, cmd, condition]
+  const rules = [
+    [100, 'RED_SOLID',    () => checkRateLimit()],
+    [ 90, 'RED_FAST',     () => sessions.some((s) => s.status === 'waiting')],
+    [ 75, 'MAGENTA_FAST', () => checkApiOutage()],
+    [ 60, 'BLUE_BLINK',   () => checkChromeDevtools()],
+    [ 50, 'BLUE_PULSE',   () => channels.has('mcp')],
+    [ 40, 'GREEN_BLINK',  () => {
+      const hasWorking = sessions.some((s) => s.status === 'working')
+      const hasIdle = sessions.some((s) => s.status === 'idle')
+      return hasWorking && !hasIdle
+    }],
+    [ 30, 'GREEN',        () => {
+      const hasWorking = sessions.some((s) => s.status === 'working')
+      const hasIdle = sessions.some((s) => s.status === 'idle')
+      return hasWorking && hasIdle
+    }],
+    [ 20, 'YELLOW_SLOW',  () => channels.has('precompact')]
+  ]
+
+  for (const [, cmd, test] of rules) {
+    try { if (test()) return cmd } catch (_) { /* detector falhou, pula */ }
+  }
   return 'OFF'
 }
 
 function tick() {
-  const sessions = readSessions()
-  const cmd = decideCommand(sessions)
-  // força reenvio periódico para renovar o watchdog do firmware
+  const cmd = decideCommand()
   const force = (Date.now() - lastCommandTs) >= PING_INTERVAL_MS
   sendCommand(cmd, { force })
 }
 
 // --- Main --------------------------------------------------------------------
-console.log(`[claude-led] watching ${STATE_DIR}`)
+console.log(`[claude-led] watching ${STATE_DIR} + ${CHANNELS_DIR}`)
+try { fs.mkdirSync(CHANNELS_DIR, { recursive: true }) } catch (_) {}
 openPort()
 setInterval(tick, SCAN_INTERVAL_MS)
 
-// Ao sair, apaga o LED
 function shutdown() {
   try { if (port && port.writable) port.write('OFF\n') } catch (_) {}
   setTimeout(() => process.exit(0), 100)

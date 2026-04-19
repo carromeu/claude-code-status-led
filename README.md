@@ -3,14 +3,25 @@
 Reflete o estado agregado de **várias sessões do Claude Code** num LED WS2812
 integrado a uma placa RP2040-Zero plugada via USB-C.
 
-## Estados visuais
+## Estados visuais (v0.2.0)
 
-| LED                 | Significado                                                      |
-|---------------------|------------------------------------------------------------------|
-| 🔴 vermelho piscando | ≥1 sessão esperando input (permission/elicitation/idle prompt) |
-| 🟢 verde piscando    | Todas as sessões ativas estão trabalhando (nenhuma parada)      |
-| 🟢 verde contínuo    | Mix: algumas trabalhando, outras paradas                         |
-| ⚫ apagado           | Nenhuma sessão ativa / todas paradas                             |
+Canais em ordem de prioridade (maior vence):
+
+| Prio | LED                     | Canal                  | Fonte (100% passiva)                             |
+|-----:|-------------------------|------------------------|--------------------------------------------------|
+| 100  | 🔴 vermelho contínuo    | Rate limit atingido    | `~/.claude/claudewatch-usage.json` (≥ 100%)      |
+|  90  | 🔴 vermelho piscando (0.3s) | Sessão aguardando  | hook `Notification` (permission/elicit)          |
+|  75  | 🟣 magenta piscando     | Anthropic API em outage| polling `status.claude.com/api/v2/components.json` |
+|  60  | 🔵 azul piscando        | Chrome DevTools ativo  | `lsof -iTCP:9222 -sTCP:LISTEN`                   |
+|  50  | 🔵 azul pulse senoidal  | Tool MCP rodando       | hook `PreToolUse` matcher `mcp__.*`              |
+|  40  | 🟢 verde piscando       | Todas sessões working  | agregação de `~/.claude-led/sessions/*.json`     |
+|  30  | 🟢 verde contínuo       | Mix working + idle     | idem                                              |
+|  20  | 🟡 amarelo piscando lento | Compactação contexto  | hook `PreCompact`                                |
+|   0  | ⚫ apagado              | Nada ativo             | default                                           |
+
+Princípio: **detecção 100% passiva** — zero CLI manual no fluxo de trabalho. Se
+uma fonte de dados não existir no seu setup (ex.: claudewatch não instalado),
+o canal correspondente fica inerte sem quebrar o resto.
 
 Plug-and-play: conectou o USB, acendeu. Desconectou, o daemon fica tentando
 reabrir; quando religar, volta a funcionar.

@@ -18,6 +18,25 @@
             "command": "node $HOME/.claude-led/hooks/claude-led-hook.js --event PreToolUse"
           }
         ]
+      },
+      {
+        "matcher": "mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node $HOME/.claude-led/hooks/claude-led-hook.js --event PreToolUseMcp"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node $HOME/.claude-led/hooks/claude-led-hook.js --event PreCompact"
+          }
+        ]
       }
     ],
     "Notification": [

@@ -5,7 +5,7 @@
 //
 // Uso no ~/.claude/settings.json (ver settings.json neste pacote).
 //
-// Args: --event <UserPromptSubmit|PreToolUse|Stop|Notification|SessionEnd>
+// Args: --event <UserPromptSubmit|PreToolUse|PreToolUseMcp|PreCompact|Stop|Notification|SessionEnd>
 
 'use strict'
 
@@ -14,6 +14,25 @@ const path = require('path')
 const os = require('os')
 
 const STATE_DIR = path.join(os.homedir(), '.claude-led', 'sessions')
+const CHANNELS_DIR = path.join(os.homedir(), '.claude-led', 'channels')
+
+// Canais globais (não-sessão) com TTL, usados pelo daemon v0.2.0+.
+// Cada canal vive como ~/.claude-led/channels/<name>.json com { expires_at }.
+// O daemon lê a cada tick e ignora os expirados.
+function writeChannel(name, ttlMs, extra = {}) {
+  fs.mkdirSync(CHANNELS_DIR, { recursive: true })
+  const file = path.join(CHANNELS_DIR, `${name}.json`)
+  const now = Date.now()
+  const payload = {
+    channel: name,
+    activated_at: now,
+    expires_at: now + ttlMs,
+    ...extra
+  }
+  const tmp = `${file}.tmp`
+  fs.writeFileSync(tmp, JSON.stringify(payload))
+  fs.renameSync(tmp, file)
+}
 
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true })
@@ -81,6 +100,24 @@ function removeState(sessionId) {
         // interno (ex.: AskUserQuestion, permission prompt) sem novo
         // UserPromptSubmit. Ruído é amortecido pelo tick de 1.5s do daemon.
         writeState(sessionId, 'working', { cwd })
+        break
+
+      case 'PreToolUseMcp': {
+        // Disparado apenas quando PreToolUse tem matcher 'mcp__*'.
+        // Marca o canal 'mcp' com TTL 30s — se o tool call demorar mais,
+        // o hook é chamado de novo (PreToolUse dispara antes de cada tool).
+        const toolName = input.tool_name || input.tool || ''
+        writeChannel('mcp', 30_000, { tool_name: toolName, session_id: sessionId })
+        // Mantém a semântica de 'working' na sessão.
+        writeState(sessionId, 'working', { cwd })
+        break
+      }
+
+      case 'PreCompact':
+        // Claude Code vai compactar o contexto — operação demorada.
+        // TTL 120s cobre com folga (usualmente <30s). Se houver outra
+        // compactação, o arquivo é reescrito com TTL renovado.
+        writeChannel('precompact', 120_000, { session_id: sessionId })
         break
 
       case 'Stop':
