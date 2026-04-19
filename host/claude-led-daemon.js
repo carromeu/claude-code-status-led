@@ -37,9 +37,13 @@ async function findPort() {
     return ACCEPTED_VIDS.includes(vid)
   })
   if (process.platform === 'darwin') {
-    // macOS expõe cada CDC duas vezes: /dev/tty.usbmodemXXX e /dev/cu.usbmodemXXX.
-    // /dev/cu.* é non-blocking no open() — usamos só ele para evitar duplicatas.
-    candidates = candidates.filter((p) => (p.path || '').startsWith('/dev/cu.'))
+    // No macOS, SerialPort.list() só reporta /dev/tty.usbmodem*, mas o
+    // /dev/cu.usbmodem* espelhado existe e é preferível: open() é non-blocking
+    // e não depende de DCD (USB-CDC não tem carrier real). Convertemos o prefixo.
+    candidates = candidates.map((p) => ({
+      ...p,
+      path: (p.path || '').replace(/^\/dev\/tty\./, '/dev/cu.')
+    }))
   }
   if (candidates.length === 0) return null
   // prefere o segundo canal (CDC data) quando existem dois endpoints do mesmo device
