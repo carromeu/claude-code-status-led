@@ -115,14 +115,29 @@ eles apareceram.
 
 - **Porta não detectada**: `node -e "require('serialport').SerialPort.list().then(console.log)"`
   e confira `vendorId`. Se for diferente, adicione em `ACCEPTED_VIDS` no daemon.
-- **Dois ttyACM**: o primeiro é o console (REPL), o segundo é o CDC data. O
-  daemon escolhe o de ordem alfabética maior, que é normalmente o correto.
+- **Dois ttyACM/usbmodem**: o primeiro é o console (REPL), o segundo é o CDC
+  data. O daemon escolhe o de ordem alfabética maior, que é normalmente o
+  correto. No macOS, o daemon usa `/dev/cu.*` em vez de `/dev/tty.*` (non-blocking
+  no open).
 - **Hook não dispara**: rode `/hooks` dentro do Claude Code para listar; veja
   também `~/.claude-led/sessions/hook.log`.
 - **LED trava aceso**: o watchdog de 30s apaga sozinho. Se persistir, o daemon
-  não está rodando — cheque `systemctl --user status claude-led`.
-- **Permissão negada em /dev/ttyACM***: faltou `dialout` ou o udev rule. Um
-  `ls -l /dev/ttyACM*` deve mostrar group `dialout` e você nele.
+  não está rodando — cheque `systemctl --user status claude-led` (Linux) ou
+  `launchctl print gui/$(id -u)/com.carromeu.claude-led` (macOS).
+- **ImportError: no module named 'neopixel' (CircuitPython)**: o firmware
+  deste projeto usa `neopixel_write` built-in justamente para evitar a lib
+  externa. Se adaptar o firmware e quiser a lib, copie `neopixel.mpy` para
+  `/Volumes/CIRCUITPY/lib/` a partir do Adafruit CircuitPython Bundle.
+- **Permissão negada em /dev/ttyACM* (Linux)**: faltou `dialout` ou o udev
+  rule. `ls -l /dev/ttyACM*` deve mostrar group `dialout` e você nele.
+- **Internet/DNS fica instável ao plugar a placa (macOS)**: o macOS enumera
+  o USB-CDC como "modem" e pode tentar rotear tráfego por ele. Desative os
+  serviços de rede correspondentes (mantém o serial utilizável):
+
+  ```bash
+  sudo networksetup -setnetworkserviceenabled "RP2040-Zero" off
+  sudo networksetup -setnetworkserviceenabled "RP2040-Zero 2" off
+  ```
 
 ## Extensões possíveis
 
