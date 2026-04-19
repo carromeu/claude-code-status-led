@@ -89,17 +89,24 @@ function removeState(sessionId) {
         break
 
       case 'Notification': {
-        // matcher típicos: permission_prompt, idle_prompt, elicitation_dialog
-        // todos significam "precisa do humano" => elucidação.
-        // Se o tipo não bater em nenhum padrão conhecido, NÃO escrevemos —
-        // preserva o estado anterior. Evita falsos-positivos de system
-        // notifications externas (ex.: eventos USB/hotplug do macOS).
+        // Só tratamos como 'waiting' notifications que realmente bloqueiam
+        // o turno: permission_prompt e elicitation_dialog. idle_prompt
+        // (lembrete periódico do Claude Code após ~60s sem atividade) NÃO
+        // é bloqueante — o usuário pode simplesmente ignorar —, então não
+        // deve sequestrar o LED. Tipos desconhecidos preservam o estado.
         const t = (input.notification_type || input.type || '').toLowerCase()
         const isWaiting =
           t.includes('permission') ||
-          t.includes('idle') ||
-          t.includes('elicit') ||
-          t.includes('input')
+          t.includes('elicit')
+        // Log de auditoria: todo Notification passa por aqui é registrado
+        // (1 linha, append) para facilitar diagnóstico de spurious waiting.
+        try {
+          ensureDir(STATE_DIR)
+          fs.appendFileSync(
+            path.join(STATE_DIR, 'hook.log'),
+            `[${new Date().toISOString()}] Notification type="${t}" waiting=${isWaiting}\n`
+          )
+        } catch (_) { /* noop */ }
         if (isWaiting) {
           writeState(sessionId, 'waiting', { cwd, notification_type: t })
         }
