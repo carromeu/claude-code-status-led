@@ -90,14 +90,19 @@ function removeState(sessionId) {
 
       case 'Notification': {
         // matcher típicos: permission_prompt, idle_prompt, elicitation_dialog
-        // todos significam "precisa do humano" => elucidação
+        // todos significam "precisa do humano" => elucidação.
+        // Se o tipo não bater em nenhum padrão conhecido, NÃO escrevemos —
+        // preserva o estado anterior. Evita falsos-positivos de system
+        // notifications externas (ex.: eventos USB/hotplug do macOS).
         const t = (input.notification_type || input.type || '').toLowerCase()
-        const isWaiting = !t ||
+        const isWaiting =
           t.includes('permission') ||
           t.includes('idle') ||
           t.includes('elicit') ||
           t.includes('input')
-        writeState(sessionId, isWaiting ? 'waiting' : 'working', { cwd, notification_type: t })
+        if (isWaiting) {
+          writeState(sessionId, 'waiting', { cwd, notification_type: t })
+        }
         break
       }
 
