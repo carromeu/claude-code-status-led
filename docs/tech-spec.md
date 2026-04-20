@@ -145,7 +145,8 @@ Se o daemon só enxergar um endpoint, o `boot.py` não está ativo (a placa pode
 | `RED_SOLID`    | Vermelho contínuo                             | 100 (rate limit)              |
 | `RED_FAST`     | Vermelho piscando 0,3 s                       | 90 (sessão aguardando)        |
 | `RED_BLINK`    | Vermelho piscando 0,5 s (alias MVP v0.1.0)    | —                             |
-| `MAGENTA_FAST` | Magenta piscando 0,3 s                        | 75 (API Anthropic em outage)  |
+| `MAGENTA_FAST` | Magenta piscando 0,3 s                        | 75 (API em major/partial outage) |
+| `MAGENTA_PULSE`| Magenta com pulse senoidal, período 3 s       | 15 (API em degraded_performance — ambient, v0.2.2+) |
 | `BLUE_BLINK`   | Azul piscando 0,5 s                           | 60 (Chrome DevTools)          |
 | `BLUE_PULSE`   | Azul com pulse senoidal, período 2 s          | 50 (tool MCP rodando)         |
 | `GREEN_PULSE`  | Verde com pulse senoidal, período 2 s         | 40 (todas sessões working — regime estacionário, v0.2.1+) |
@@ -316,14 +317,14 @@ Três detectores rodam dentro do daemon, cada um com cache próprio:
 | Detector           | Fonte                                            | Cache  | Falha silenciosa                   |
 |--------------------|--------------------------------------------------|--------|------------------------------------|
 | `checkRateLimit`   | `~/.claude/claudewatch-usage.json`               | 60 s   | Arquivo ausente → canal inerte     |
-| `checkApiOutage`   | `https://status.claude.com/api/v2/components.json` | 30 s | Timeout/erro → assume operacional  |
+| `checkApiOutage`   | `https://status.claude.com/api/v2/components.json` | 30 s | Timeout/erro → assume operacional. Retorna severidade: `null` \| `'degraded'` \| `'partial'` \| `'major'` |
 | `checkChromeDevtools` | `lsof -iTCP:9222 -sTCP:LISTEN -t`             | 3 s    | `lsof` falha → canal inerte        |
 
 **Padrão fire-and-forget**: os detectores com I/O lento (HTTP, subprocess) retornam o valor em cache e disparam a atualização assíncrona em background. Isso impede que o tick do daemon (1,5 s) fique bloqueado aguardando rede.
 
 Detalhe `checkRateLimit`: o schema exato do `claudewatch-usage.json` varia entre versões do claudewatch. O detector é defensivo — percorre recursivamente o JSON procurando qualquer número que possa ser um percentual (`value`, `percent`, `pct`) e considera "atingido" se qualquer um for ≥ 100.
 
-Detalhe `checkApiOutage`: consulta a página de status pública da Anthropic, procura componentes cujo nome contenha "api" e status diferente de `operational`. Em casos de timeout ou erro de rede, assume que a API está operacional — prefere ocultar o canal a gerar alarme falso durante problemas locais de conectividade.
+Detalhe `checkApiOutage` (v0.2.2+): consulta a página de status pública da Anthropic, procura componentes cujo nome contenha "api" e computa a **pior severidade** encontrada entre `degraded_performance`, `partial_outage` e `major_outage`. A função retorna a severidade como string (ou `null` se tudo estiver `operational`). Dois canais consomem o resultado: prio 75 (`MAGENTA_FAST`) ativa em `major`/`partial`; prio 15 (`MAGENTA_PULSE`) ativa só em `degraded`. Em casos de timeout ou erro de rede, retorna `null` — prefere ocultar o canal a gerar alarme falso durante problemas locais de conectividade.
 
 Detalhe `checkChromeDevtools`: qualquer processo escutando na porta 9222 dispara o canal. Na prática inclui Playwright, Puppeteer, Cypress e DevTools aberto manualmente. Apps Electron em modo dev (VSCode, Discord, Slack) ocasionalmente escutam na 9222 — é aceito como "true positive relaxado" nesta versão; uma futura v0.4.0 terá config `ignore_processes` para filtragem.
 
@@ -339,7 +340,8 @@ A função `decideCommand()` aplica as seguintes regras, em ordem decrescente de
 [ 50, 'BLUE_PULSE',   () => channels.has('mcp')],
 [ 40, 'GREEN_PULSE',  () => hasWorking && !hasIdle],   // v0.2.1+
 [ 30, 'GREEN_BLINK',  () => hasWorking && hasIdle],    // v0.2.1+
-[ 20, 'YELLOW_SLOW',  () => channels.has('precompact')]
+[ 20, 'YELLOW_SLOW',  () => channels.has('precompact')],
+[ 15, 'MAGENTA_PULSE', () => checkApiOutage() === 'degraded']   // v0.2.2+
 ```
 
 Nenhuma regra bate → `'OFF'`.

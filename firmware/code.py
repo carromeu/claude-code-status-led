@@ -15,7 +15,10 @@
 #   Estados novos v0.2.0 / v0.2.1:
 #     RED_SOLID     -> vermelho contínuo (rate limit atingido)
 #     RED_FAST      -> vermelho piscando rápido 0.3s (sessão aguardando)
-#     MAGENTA_FAST  -> magenta piscando rápido 0.3s (Anthropic API em outage)
+#     MAGENTA_FAST  -> magenta piscando rápido 0.3s (Anthropic API em outage
+#                      — partial_outage ou major_outage, prio 75)
+#     MAGENTA_PULSE -> magenta pulse senoidal 3s (API em degraded_performance,
+#                      prio 15 — ambient info, v0.2.2+)
 #     BLUE_BLINK    -> azul piscando 0.5s (Chrome DevTools ativo)
 #     BLUE_PULSE    -> azul com pulse senoidal 2s (tool MCP rodando)
 #     GREEN_PULSE   -> verde com pulse senoidal 2s (todas sessões working) [v0.2.1]
@@ -74,6 +77,7 @@ STATE_TABLE = {
     'GREEN_BLINK':  ((0, 255, 0),     'blink', 0.5),
     'GREEN_PULSE':  ((0, 255, 0),     'pulse', 2.0),
     'MAGENTA_FAST': ((255, 0, 255),   'blink', 0.3),
+    'MAGENTA_PULSE':((255, 0, 255),   'pulse', 3.0),
     'BLUE_BLINK':   ((0, 0, 255),     'blink', 0.5),
     'BLUE_PULSE':   ((0, 0, 255),     'pulse', 2.0),
     'YELLOW_SLOW':  ((255, 255, 0),   'blink', 1.0),

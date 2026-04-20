@@ -14,12 +14,13 @@ Canais em ordem decrescente de prioridade (maior vence):
 |-----:|-----------------------------|-----------------------------|--------------------------------------------------------|
 | 100  | 🔴 vermelho contínuo        | Rate limit atingido         | `~/.claude/claudewatch-usage.json` (≥ 100 %)           |
 |  90  | 🔴 vermelho piscando 0,3 s  | Sessão aguardando você      | hook `Notification` (permission/elicit)                |
-|  75  | 🟣 magenta piscando rápido  | API Anthropic em outage     | `status.claude.com/api/v2/components.json`             |
+|  75  | 🟣 magenta piscando rápido  | API Anthropic em outage (`major_outage` ou `partial_outage`) | `status.claude.com/api/v2/components.json` |
 |  60  | 🔵 azul piscando 0,5 s      | Chrome DevTools ativo       | `lsof -iTCP:9222 -sTCP:LISTEN`                         |
 |  50  | 🔵 azul pulse senoidal      | Tool MCP em execução        | hook `PreToolUse` matcher `mcp__.*` (TTL 30 s)         |
 |  40  | 🟢 verde pulse senoidal     | Todas as sessões trabalhando (regime estacionário) | agregação de `~/.claude-led/sessions/*.json` |
 |  30  | 🟢 verde piscando 0,5 s     | Mix trabalhando + ocioso (transição — alguma terminou) | idem                                  |
 |  20  | 🟡 amarelo piscando 1 s     | Compactação de contexto     | hook `PreCompact` (TTL 120 s)                          |
+|  15  | 🟣 magenta pulse 3 s        | API em `degraded_performance` (lenta mas operacional) | idem endpoint de status         |
 |   0  | ⚫ apagado                  | Nada ativo                  | default                                                |
 
 Se uma fonte não existir no seu setup (ex.: `claudewatch` não instalado), o canal correspondente fica inerte sem quebrar o restante.

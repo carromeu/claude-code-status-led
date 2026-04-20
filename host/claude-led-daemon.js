@@ -7,12 +7,13 @@
 //
 //   100  rate_limit        RED_SOLID      leitura ~/.claude/claudewatch-usage.json
 //    90  sessions:waiting  RED_FAST       hook Notification (permission/elicit)
-//    75  api_outage        MAGENTA_FAST   polling status.claude.com
+//    75  api_outage:major  MAGENTA_FAST   status.claude.com = major/partial_outage
 //    60  chrome_devtools   BLUE_BLINK     lsof -iTCP:9222 -sTCP:LISTEN
 //    50  mcp               BLUE_PULSE     hook PreToolUse matcher mcp__*
 //    40  sessions:working  GREEN_PULSE    todas as sessões ativas em working
 //    30  sessions:mix      GREEN_BLINK    working + idle simultâneos (transição)
 //    20  precompact        YELLOW_SLOW    hook PreCompact
+//    15  api_outage:degrad MAGENTA_PULSE  status.claude.com = degraded_performance
 //     0  (default)         OFF            nada ativo
 //
 // Hot-plug: se a placa não estiver presente, o daemon fica tentando reabrir.
@@ -156,7 +157,8 @@ function readChannels() {
 // --- Passive detectors --------------------------------------------------------
 const detectorCache = {
   rate_limit: { ts: 0, value: false },
-  api_outage: { ts: 0, value: false },
+  // api_outage.value é severidade: null | 'degraded' | 'partial' | 'major'
+  api_outage: { ts: 0, value: null },
   chrome_devtools: { ts: 0, value: false }
 }
 
@@ -185,14 +187,15 @@ function checkRateLimit() {
   return hit
 }
 
+// Retorna a severidade máxima dos componentes "api" no status page.
+// null | 'degraded' | 'partial' | 'major'.
+// Fire-and-forget: usa cache anterior enquanto refresca. Em falha de rede,
+// assume null (operacional) para não soar alarme falso durante problemas locais.
 function checkApiOutage() {
   const now = Date.now()
   if (now - detectorCache.api_outage.ts < CACHE_API_OUTAGE_MS) {
     return detectorCache.api_outage.value
   }
-  // Fire-and-forget: usa o cache anterior enquanto refresca.
-  // Se falhar (sem internet, timeout), assume que não está em outage
-  // para não soar alarme falso durante problemas de rede local.
   const stamp = now
   ;(async () => {
     try {
@@ -201,16 +204,24 @@ function checkApiOutage() {
       const r = await fetch('https://status.claude.com/api/v2/components.json', { signal: ctrl.signal })
       clearTimeout(to)
       const data = await r.json()
-      // Se algum componente "API" tem status != 'operational', marca outage.
       const components = data?.components || []
-      const outage = components.some((c) => {
+      // Escolhe a pior severidade entre componentes cujo nome contém "api".
+      // Ordem: major > partial > degraded > null.
+      const rank = { major: 3, partial: 2, degraded: 1 }
+      let worst = null
+      for (const c of components) {
         const name = String(c.name || '').toLowerCase()
+        if (!name.includes('api')) continue
         const status = String(c.status || '').toLowerCase()
-        return name.includes('api') && status && status !== 'operational'
-      })
-      detectorCache.api_outage = { ts: stamp, value: outage }
+        let sev = null
+        if (status === 'major_outage') sev = 'major'
+        else if (status === 'partial_outage') sev = 'partial'
+        else if (status === 'degraded_performance') sev = 'degraded'
+        if (sev && (!worst || rank[sev] > rank[worst])) worst = sev
+      }
+      detectorCache.api_outage = { ts: stamp, value: worst }
     } catch (_) {
-      detectorCache.api_outage = { ts: stamp, value: false }
+      detectorCache.api_outage = { ts: stamp, value: null }
     }
   })()
   return detectorCache.api_outage.value
@@ -240,7 +251,10 @@ function decideCommand() {
   const rules = [
     [100, 'RED_SOLID',    () => checkRateLimit()],
     [ 90, 'RED_FAST',     () => sessions.some((s) => s.status === 'waiting')],
-    [ 75, 'MAGENTA_FAST', () => checkApiOutage()],
+    [ 75, 'MAGENTA_FAST', () => {
+      const sev = checkApiOutage()
+      return sev === 'major' || sev === 'partial'
+    }],
     [ 60, 'BLUE_BLINK',   () => checkChromeDevtools()],
     [ 50, 'BLUE_PULSE',   () => channels.has('mcp')],
     [ 40, 'GREEN_PULSE',  () => {
@@ -257,7 +271,8 @@ function decideCommand() {
       const hasIdle = sessions.some((s) => s.status === 'idle')
       return hasWorking && hasIdle
     }],
-    [ 20, 'YELLOW_SLOW',  () => channels.has('precompact')]
+    [ 20, 'YELLOW_SLOW',  () => channels.has('precompact')],
+    [ 15, 'MAGENTA_PULSE', () => checkApiOutage() === 'degraded']
   ]
 
   for (const [, cmd, test] of rules) {
