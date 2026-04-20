@@ -5,7 +5,7 @@
 //
 // Uso no ~/.claude/settings.json (ver settings.json neste pacote).
 //
-// Args: --event <UserPromptSubmit|PreToolUse|PreToolUseMcp|PreCompact|Stop|Notification|SessionEnd>
+// Args: --event <UserPromptSubmit|PreToolUse|PreToolUseMcp|PreCompact|Stop|StopFailure|Notification|SessionEnd>
 
 'use strict'
 
@@ -78,6 +78,23 @@ function removeState(sessionId) {
   try { fs.unlinkSync(file) } catch (_) { /* noop */ }
 }
 
+function auditLog(event, input, note = '') {
+  // Audit log unificado: registra TODO evento recebido com campos-chave
+  // do payload. Fundamental para diagnosticar casos de LED em estado
+  // inesperado em produção.
+  try {
+    ensureDir(STATE_DIR)
+    const keys = Object.keys(input || {}).slice(0, 20).join(',')
+    const line = `[${new Date().toISOString()}] event=${event} ` +
+      `session=${(input.session_id || 'unknown').slice(0, 8)} ` +
+      `type=${input.notification_type || input.type || '-'} ` +
+      `tool=${input.tool_name || '-'} ` +
+      `keys=[${keys}]` +
+      (note ? ` note=${note}` : '')
+    fs.appendFileSync(path.join(STATE_DIR, 'hook.log'), line + '\n')
+  } catch (_) { /* noop */ }
+}
+
 ;(async () => {
   try {
     const { event } = parseArgs(process.argv)
@@ -87,6 +104,8 @@ function removeState(sessionId) {
 
     const sessionId = input.session_id || process.env.CLAUDE_SESSION_ID || 'unknown'
     const cwd = input.cwd || process.cwd()
+
+    auditLog(event || '(no-event)', input)
 
     switch (event) {
       case 'UserPromptSubmit':
@@ -135,18 +154,25 @@ function removeState(sessionId) {
         const isWaiting =
           t.includes('permission') ||
           t.includes('elicit')
-        // Log de auditoria: todo Notification passa por aqui é registrado
-        // (1 linha, append) para facilitar diagnóstico de spurious waiting.
-        try {
-          ensureDir(STATE_DIR)
-          fs.appendFileSync(
-            path.join(STATE_DIR, 'hook.log'),
-            `[${new Date().toISOString()}] Notification type="${t}" waiting=${isWaiting}\n`
-          )
-        } catch (_) { /* noop */ }
+        // (audit log do tipo já registrado pelo auditLog() acima)
         if (isWaiting) {
           writeState(sessionId, 'waiting', { cwd, notification_type: t })
         }
+        break
+      }
+
+      case 'StopFailure': {
+        // Turno terminou por API error (rate limit do servidor, timeout,
+        // erro 5xx, contexto estourado, etc.). Diferente do canal global
+        // api_outage (status.claude.com) — este é per-session/per-turn.
+        // Sinaliza via canal session_issue com TTL 60s -> ORANGE_BLINK
+        // prio 85 no daemon. Marca a sessão como idle (turno acabou).
+        writeChannel('session_issue', 60_000, {
+          session_id: sessionId,
+          source: 'StopFailure',
+          last_message: (input.last_assistant_message || '').slice(0, 200)
+        })
+        writeState(sessionId, 'idle', { cwd })
         break
       }
 

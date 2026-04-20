@@ -147,13 +147,13 @@ Se o daemon só enxergar um endpoint, o `boot.py` não está ativo (a placa pode
 | `RED_BLINK`    | Vermelho piscando 0,5 s (alias MVP v0.1.0)    | —                             |
 | `MAGENTA_FAST` | Magenta piscando 0,3 s                        | 75 (API em major/partial outage) |
 | `MAGENTA_PULSE`| Magenta com pulse senoidal, período 3 s       | 15 (API em degraded_performance — ambient, v0.2.2+) |
+| `ORANGE_BLINK` | Laranja piscando 0,5 s                        | 85 (erro per-turn em sessão — `StopFailure`, v0.2.4+) |
 | `BLUE_BLINK`   | Azul piscando 0,5 s                           | 60 (Chrome DevTools)          |
 | `BLUE_PULSE`   | Azul com pulse senoidal, período 2 s          | 50 (tool MCP rodando)         |
 | `GREEN_PULSE`  | Verde com pulse senoidal, período 2 s         | 40 (todas sessões working — regime estacionário, v0.2.1+) |
 | `GREEN_BLINK`  | Verde piscando 0,5 s                          | 30 (mix working + idle — transição, v0.2.1+) |
 | `GREEN`        | Verde contínuo                                | — (alias legado, não usado pelo daemon desde v0.2.1) |
 | `YELLOW_SLOW`  | Amarelo piscando 1,0 s                        | 20 (compactação de contexto)  |
-| `ORANGE_BLINK` | Laranja piscando 0,5 s (reservado para crash) | 80 (planejado para v0.3.0)    |
 | `PING`         | Responde `PONG\n`                             | —                             |
 
 Todos os comandos do MVP v0.1.0 permanecem válidos como aliases para garantir compatibilidade retroativa.
@@ -210,7 +210,10 @@ Regras invioláveis:
 | `PreCompact`          | `writeChannel('precompact', TTL 120 s)`                          |
 | `Notification`        | `writeState(session_id, 'waiting')` **apenas** se tipo conter `permission` ou `elicit` |
 | `Stop`                | `writeState(session_id, 'idle')`                                 |
+| `StopFailure` (v0.2.4+) | `writeChannel('session_issue', TTL 60 s)` + `writeState(session_id, 'idle')` |
 | `SessionEnd`          | remove o arquivo da sessão                                       |
+
+**Audit log unificado (v0.2.4+)**: todo hook chamado registra uma linha em `~/.claude-led/sessions/hook.log` com `event`, `session` (8 chars), `notification_type`, `tool_name` e as chaves do payload. Indispensável para diagnosticar futuros casos de LED em estado inesperado sem precisar reproduzir o evento.
 
 ### 4.3. Escolhas de design em cada hook
 
@@ -344,7 +347,8 @@ A função `decideCommand()` aplica as seguintes regras, em ordem decrescente de
 ```js
 [100, 'RED_SOLID',    () => checkRateLimit()],
 [ 90, 'RED_FAST',     () => sessions.some(s => s.status === 'waiting')],
-[ 75, 'MAGENTA_FAST', () => checkApiOutage()],
+[ 85, 'ORANGE_BLINK', () => channels.has('session_issue')],   // v0.2.4+
+[ 75, 'MAGENTA_FAST', () => ['major','partial'].includes(checkApiOutage())],
 [ 60, 'BLUE_BLINK',   () => checkChromeDevtools()],
 [ 50, 'BLUE_PULSE',   () => channels.has('mcp')],
 [ 40, 'GREEN_PULSE',  () => hasWorking && !hasIdle],   // v0.2.1+
@@ -360,6 +364,7 @@ Decisões de prioridade mais notáveis:
 - **Rate limit > waiting**: se a API está travada, aprovar um waiting local não adianta — melhor mostrar o bloqueio "duro".
 - **MCP tool > todas-working**: uma tool MCP em execução frequentemente é mais lenta que uma tool nativa; a informação específica vale mais que a agregação genérica.
 - **Todas-working é pulse, mix é blink (v0.2.1+)**: inversão deliberada da intuição "mais atividade = mais piscante". A razão: "todas working" é **regime estacionário** (nada novo para olhar — pulse ambiente basta); "mix working + idle" é **transição** (alguma sessão acabou de terminar, vale a pena checar — blink chama mais atenção periférica).
+- **session_issue (85) > api_outage (75)**: erro per-turn é mais imediato que outage global — sua sessão acabou de falhar agora; outage pode ser de outro componente que você nem usa diretamente.
 - **PreCompact < tudo-idle**: compactação é de baixa urgência e apenas informativa, não deve suprimir sinais mais urgentes.
 
 ### 5.8. Envio de comando com throttle
@@ -591,9 +596,9 @@ No macOS, verificar também se os paths estão sendo convertidos `tty.` → `cu.
 
 ### 10.1. Escopo atual (v0.2.3)
 
-- 9 canais ativos + default (off). Abaixo do limite cognitivo de ~10.
+- 10 canais ativos + default (off). No limite cognitivo de ~10.
 - Detectores hardcoded — nenhuma configuração externa permite habilitar/desabilitar canais individualmente sem editar `claude-led-daemon.js`.
-- Nenhum detector de crash/erro em sessão — descrito na nota 05 do projeto com prioridade 80. O comando `ORANGE_BLINK` já existe no firmware aguardando o detector.
+- O canal `session_issue` (prio 85, ORANGE_BLINK) cobre erros per-turno via `StopFailure` (rate limit do servidor, timeout, contexto estourado). Crashes "duros" (processo do Claude Code morre sem disparar evento) ainda não têm detector — heurística no v0.3.0+.
 - Protocolo serial textual com comandos nomeados (`RED_SOLID`, `BLUE_PULSE`, etc.) — não parametrizável via `SET R G B` genérico.
 - Brilho global fixo em `0.25` no firmware; sem quiet mode (redução automática após inatividade).
 - Sem CLI de inspeção — debug feito via `tail` + `cat` nos diretórios de estado.

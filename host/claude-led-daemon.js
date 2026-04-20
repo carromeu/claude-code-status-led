@@ -7,6 +7,7 @@
 //
 //   100  rate_limit        RED_SOLID      leitura ~/.claude/claudewatch-usage.json
 //    90  sessions:waiting  RED_FAST       hook Notification (permission/elicit)
+//    85  session_issue     ORANGE_BLINK   hook StopFailure (API error per-turn)
 //    75  api_outage:major  MAGENTA_FAST   status.claude.com = major/partial_outage
 //    60  chrome_devtools   BLUE_BLINK     lsof -iTCP:9222 -sTCP:LISTEN
 //    50  mcp               BLUE_PULSE     hook PreToolUse matcher mcp__*
@@ -264,6 +265,7 @@ function decideCommand() {
   const rules = [
     [100, 'RED_SOLID',    () => checkRateLimit()],
     [ 90, 'RED_FAST',     () => sessions.some((s) => s.status === 'waiting')],
+    [ 85, 'ORANGE_BLINK', () => channels.has('session_issue')],
     [ 75, 'MAGENTA_FAST', () => {
       const sev = checkApiOutage()
       return sev === 'major' || sev === 'partial'

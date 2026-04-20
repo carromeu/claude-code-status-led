@@ -14,6 +14,7 @@ Canais em ordem decrescente de prioridade (maior vence):
 |-----:|-----------------------------|-----------------------------|--------------------------------------------------------|
 | 100  | 🔴 vermelho contínuo        | Rate limit atingido         | `~/.claude/claudewatch-usage.json` (≥ 100 %)           |
 |  90  | 🔴 vermelho piscando 0,3 s  | Sessão aguardando você      | hook `Notification` (permission/elicit)                |
+|  85  | 🟠 laranja piscando 0,5 s   | Erro per-turno na sessão (rate limit do servidor, timeout, contexto estourado, etc.) | hook `StopFailure` (TTL 60 s) |
 |  75  | 🟣 magenta piscando rápido  | API Anthropic em outage (`major_outage` ou `partial_outage`) | `status.claude.com/api/v2/components.json` |
 |  60  | 🔵 azul piscando 0,5 s      | Chrome DevTools ativo       | `lsof -iTCP:9222 -sTCP:LISTEN`                         |
 |  50  | 🔵 azul pulse senoidal      | Tool MCP em execução        | hook `PreToolUse` matcher `mcp__.*` (TTL 30 s)         |
@@ -140,7 +141,7 @@ jq --slurpfile snip "$SNIPPET" '
 ' "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
 ```
 
-Em uma sessão nova do Claude Code, rode `/hooks` para confirmar que aparecem os 6 eventos: `UserPromptSubmit`, `PreToolUse` (2 entradas — uma global e outra com matcher `mcp__.*`), `PreCompact`, `Notification`, `Stop`, `SessionEnd`.
+Em uma sessão nova do Claude Code, rode `/hooks` para confirmar que aparecem os 7 eventos: `UserPromptSubmit`, `PreToolUse` (2 entradas — uma global e outra com matcher `mcp__.*`), `PreCompact`, `Notification`, `Stop`, `StopFailure`, `SessionEnd`.
 
 ### 5. Importante — desativar enumeração como "modem"
 

@@ -59,6 +59,16 @@
         ]
       }
     ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node $HOME/.claude-led/hooks/claude-led-hook.js --event StopFailure"
+          }
+        ]
+      }
+    ],
     "SessionEnd": [
       {
         "hooks": [
