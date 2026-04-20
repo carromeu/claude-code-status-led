@@ -1,6 +1,6 @@
 # Especificação Técnica — Claude Code Status LED
 
-> Documento de referência para agentes de IA e desenvolvedores humanos que precisem entender, modificar ou estender este projeto. Cobre arquitetura, protocolos, formatos de dados, fluxos de controle e decisões de design implementadas **até a versão 0.2.0**.
+> Documento de referência para agentes de IA e desenvolvedores humanos que precisem entender, modificar ou estender este projeto. Cobre arquitetura, protocolos, formatos de dados, fluxos de controle e decisões de design implementadas **até a versão 0.2.3**.
 
 ## 1. Visão geral
 
@@ -591,12 +591,13 @@ No macOS, verificar também se os paths estão sendo convertidos `tty.` → `cu.
 
 ### 10.1. Escopo atual (v0.2.3)
 
-- 8 canais ativos + default (off). Abaixo do limite cognitivo de ~10.
+- 9 canais ativos + default (off). Abaixo do limite cognitivo de ~10.
 - Detectores hardcoded — nenhuma configuração externa permite habilitar/desabilitar canais individualmente sem editar `claude-led-daemon.js`.
-- Nenhum detector de crash/erro em sessão — descrito na nota 05 do projeto com prioridade 80.
+- Nenhum detector de crash/erro em sessão — descrito na nota 05 do projeto com prioridade 80. O comando `ORANGE_BLINK` já existe no firmware aguardando o detector.
 - Protocolo serial textual com comandos nomeados (`RED_SOLID`, `BLUE_PULSE`, etc.) — não parametrizável via `SET R G B` genérico.
 - Brilho global fixo em `0.25` no firmware; sem quiet mode (redução automática após inatividade).
 - Sem CLI de inspeção — debug feito via `tail` + `cat` nos diretórios de estado.
+- Detecção de user interrupt (ESC/Ctrl+C) é **heurística** (timeout stale-working de 5 min) porque o Claude Code não dispara hook nesse caso. Se a API oficial passar a expor `Interrupted` em versões futuras, o hook ganha um case direto e o timeout fica como backup redundante.
 
 ### 10.2. Planejado
 

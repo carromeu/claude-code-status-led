@@ -6,7 +6,7 @@ Princípio central: **detecção 100% passiva**. Uma vez instalado, nenhuma aç�
 
 > A documentação técnica completa (arquitetura, protocolos, formatos) está em **[`docs/tech-spec.md`](docs/tech-spec.md)**.
 
-## Estados visuais (v0.2.0)
+## Estados visuais
 
 Canais em ordem decrescente de prioridade (maior vence):
 
@@ -184,10 +184,11 @@ O CircuitPython detecta e faz auto-reload. Se você alterar o `boot.py`, é nece
 
 Abra duas sessões do Claude Code em terminais diferentes.
 
-1. Na primeira, mande um prompt longo ("explique X em detalhes"): **verde piscando** (1 working, 0 idle).
-2. Peça permissão para rodar um bash fora da allowlist: **vermelho piscando rápido** (1 waiting). Responda — volta para verde.
-3. Aguarde o `Stop` final: **apaga** quando todas estiverem idle.
-4. Puxe o cabo USB: nada quebra — o daemon segue tentando. Replugue: volta ao estado correto em ≤ 3 s.
+1. Na primeira sozinha, mande um prompt longo ("explique X em detalhes"): **verde pulsando** (todas as sessões working, regime estacionário, prio 40).
+2. Agora com a segunda sessão ociosa em paralelo, volte à primeira e mande outro prompt: **verde piscando** (mix — uma trabalhando, outra parada; prio 30).
+3. Peça permissão para rodar um bash fora da allowlist: **vermelho piscando rápido** (1 waiting, prio 90). Responda — volta ao estado agregado anterior.
+4. Aguarde o `Stop` final: **apaga** quando todas estiverem idle.
+5. Puxe o cabo USB: nada quebra — o daemon segue tentando. Replugue: volta ao estado correto em ≤ 3 s.
 
 ## Troubleshooting
 
