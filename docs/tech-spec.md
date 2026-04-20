@@ -240,6 +240,7 @@ No POSIX, o `rename` é atômico no mesmo filesystem. Isso elimina race conditio
 - **`SCAN_INTERVAL_MS = 1500`** — tick principal. A cada 1,5 s o daemon relê sessões + canais, decide o comando, envia.
 - **`PING_INTERVAL_MS = 10000`** — a cada 10 s o daemon força o reenvio do comando atual mesmo que não tenha mudado, para manter o watchdog do firmware alimentado.
 - **`RECONNECT_INTERVAL_MS = 2000`** — tentativa de reconexão serial em intervalos de 2 s quando a placa não é detectada.
+- **`STALE_WORKING_MS = 300000`** (5 min, v0.2.3+) — sessão `working` sem atualização por mais que isso é tratada como `idle` em memória (fallback para user interrupts). Detalhe em 5.4.1.
 
 ### 5.2. Detecção da placa
 
@@ -291,6 +292,14 @@ Campos:
 - **`cwd`**: diretório de trabalho (para identificação e futura feature de cor-por-projeto).
 
 Arquivos com `updated_at` mais antigo que `IDLE_TTL_MS` (6 h) são removidos automaticamente em tempo de leitura — cobre o caso de sessão que morreu sem disparar `SessionEnd`.
+
+#### 5.4.1. Stale-working fallback (v0.2.3+)
+
+O Claude Code **não dispara nenhum hook** quando o usuário interrompe o turno com ESC ou Ctrl+C — confirmado na documentação oficial ("`Stop` hooks do not fire in response to user interrupts"). Sem isso, uma sessão que foi interrompida fica travada em `status: working` até o próximo `UserPromptSubmit` ou `PreToolUse`, e o LED continua refletindo "trabalhando" mesmo com a sessão efetivamente parada.
+
+Fallback heurístico no daemon: sessões com `status === 'working'` cujo `updated_at` seja anterior a `STALE_WORKING_MS` (5 min por padrão) são **tratadas como `idle`** em memória — apenas na agregação do tick. O arquivo em disco não é modificado; o próximo hook real da sessão (qualquer `UserPromptSubmit`, `PreToolUse`) restaura o estado correto naturalmente.
+
+5 minutos foi escolhido porque o `PreToolUse` dispara a cada tool call do Claude, incluindo operações rápidas como `Read`, `Grep`, `Edit`. Cinco minutos sem **nenhum** tool call é raro em uso normal — indicativo forte de interrupt ou trava. Prompts muito longos em que o Claude pensa sem chamar tools (reasoning-heavy sem exploração) ainda existem, mas são exceção; se forem frequentes, aumentar o valor da constante.
 
 ### 5.5. Canais
 
@@ -580,7 +589,7 @@ No macOS, verificar também se os paths estão sendo convertidos `tty.` → `cu.
 
 ## 10. Limitações conhecidas e roadmap
 
-### 10.1. Escopo atual (v0.2.0)
+### 10.1. Escopo atual (v0.2.3)
 
 - 8 canais ativos + default (off). Abaixo do limite cognitivo de ~10.
 - Detectores hardcoded — nenhuma configuração externa permite habilitar/desabilitar canais individualmente sem editar `claude-led-daemon.js`.

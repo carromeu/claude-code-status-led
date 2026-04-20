@@ -33,6 +33,11 @@ const CHANNELS_DIR = path.join(CLAUDE_LED_DIR, 'channels')
 const CLAUDEWATCH_FILE = path.join(HOME, '.claude', 'claudewatch-usage.json')
 
 const IDLE_TTL_MS = 6 * 60 * 60 * 1000 // 6h: limpa sessão esquecida
+const STALE_WORKING_MS = 5 * 60 * 1000 // 5min: sessão 'working' sem updates
+                                        // é considerada stale (interrupt/trava)
+                                        // e tratada como idle em memória. O Claude
+                                        // Code NÃO dispara hook em user interrupt
+                                        // (ESC/Ctrl+C) — só fallback é timeout.
 const PING_INTERVAL_MS = 10_000        // reenvio periódico (refresca watchdog do firmware)
 const SCAN_INTERVAL_MS = 1_500         // reavaliação principal
 
@@ -124,6 +129,14 @@ function readSessions() {
       if (now - (data.updated_at || 0) > IDLE_TTL_MS) {
         try { fs.unlinkSync(full) } catch (_) {}
         continue
+      }
+      // Sessão 'working' sem updates há > STALE_WORKING_MS é tratada como idle.
+      // Motivo: o Claude Code não dispara hook em user interrupt (ESC/Ctrl+C),
+      // então a sessão fica travada em 'working' até o próximo UserPromptSubmit
+      // ou PreToolUse. Preservamos o arquivo no disco para não competir com
+      // hooks reais da mesma sessão — só sobrescrevemos o status em memória.
+      if (data.status === 'working' && now - (data.updated_at || 0) > STALE_WORKING_MS) {
+        data = { ...data, status: 'idle', _stale: true }
       }
       sessions.push(data)
     } catch (_) { /* ignore malformed */ }

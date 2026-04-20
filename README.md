@@ -25,6 +25,8 @@ Canais em ordem decrescente de prioridade (maior vence):
 
 Se uma fonte não existir no seu setup (ex.: `claudewatch` não instalado), o canal correspondente fica inerte sem quebrar o restante.
 
+> **Interrupt (v0.2.3+)**: o Claude Code não dispara nenhum hook quando você ESC ou Ctrl+C no meio de um turno. Fallback heurístico no daemon: sessão `working` sem atualização por 5 min é tratada como `idle` em memória. O próximo prompt real restaura o estado correto.
+
 ## Arquitetura em 30 segundos
 
 ```
