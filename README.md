@@ -17,8 +17,8 @@ Canais em ordem decrescente de prioridade (maior vence):
 |  75  | 🟣 magenta piscando rápido  | API Anthropic em outage     | `status.claude.com/api/v2/components.json`             |
 |  60  | 🔵 azul piscando 0,5 s      | Chrome DevTools ativo       | `lsof -iTCP:9222 -sTCP:LISTEN`                         |
 |  50  | 🔵 azul pulse senoidal      | Tool MCP em execução        | hook `PreToolUse` matcher `mcp__.*` (TTL 30 s)         |
-|  40  | 🟢 verde piscando 0,5 s     | Todas as sessões trabalhando| agregação de `~/.claude-led/sessions/*.json`           |
-|  30  | 🟢 verde contínuo           | Mix trabalhando + ocioso    | idem                                                   |
+|  40  | 🟢 verde pulse senoidal     | Todas as sessões trabalhando (regime estacionário) | agregação de `~/.claude-led/sessions/*.json` |
+|  30  | 🟢 verde piscando 0,5 s     | Mix trabalhando + ocioso (transição — alguma terminou) | idem                                  |
 |  20  | 🟡 amarelo piscando 1 s     | Compactação de contexto     | hook `PreCompact` (TTL 120 s)                          |
 |   0  | ⚫ apagado                  | Nada ativo                  | default                                                |
 

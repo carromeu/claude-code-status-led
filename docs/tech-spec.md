@@ -148,8 +148,9 @@ Se o daemon só enxergar um endpoint, o `boot.py` não está ativo (a placa pode
 | `MAGENTA_FAST` | Magenta piscando 0,3 s                        | 75 (API Anthropic em outage)  |
 | `BLUE_BLINK`   | Azul piscando 0,5 s                           | 60 (Chrome DevTools)          |
 | `BLUE_PULSE`   | Azul com pulse senoidal, período 2 s          | 50 (tool MCP rodando)         |
-| `GREEN_BLINK`  | Verde piscando 0,5 s                          | 40 (todas sessões working)    |
-| `GREEN`        | Verde contínuo                                | 30 (mix working + idle)       |
+| `GREEN_PULSE`  | Verde com pulse senoidal, período 2 s         | 40 (todas sessões working — regime estacionário, v0.2.1+) |
+| `GREEN_BLINK`  | Verde piscando 0,5 s                          | 30 (mix working + idle — transição, v0.2.1+) |
+| `GREEN`        | Verde contínuo                                | — (alias legado, não usado pelo daemon desde v0.2.1) |
 | `YELLOW_SLOW`  | Amarelo piscando 1,0 s                        | 20 (compactação de contexto)  |
 | `ORANGE_BLINK` | Laranja piscando 0,5 s (reservado para crash) | 80 (planejado para v0.3.0)    |
 | `PING`         | Responde `PONG\n`                             | —                             |
@@ -336,8 +337,8 @@ A função `decideCommand()` aplica as seguintes regras, em ordem decrescente de
 [ 75, 'MAGENTA_FAST', () => checkApiOutage()],
 [ 60, 'BLUE_BLINK',   () => checkChromeDevtools()],
 [ 50, 'BLUE_PULSE',   () => channels.has('mcp')],
-[ 40, 'GREEN_BLINK',  () => hasWorking && !hasIdle],
-[ 30, 'GREEN',        () => hasWorking && hasIdle],
+[ 40, 'GREEN_PULSE',  () => hasWorking && !hasIdle],   // v0.2.1+
+[ 30, 'GREEN_BLINK',  () => hasWorking && hasIdle],    // v0.2.1+
 [ 20, 'YELLOW_SLOW',  () => channels.has('precompact')]
 ```
 
@@ -347,6 +348,7 @@ Decisões de prioridade mais notáveis:
 
 - **Rate limit > waiting**: se a API está travada, aprovar um waiting local não adianta — melhor mostrar o bloqueio "duro".
 - **MCP tool > todas-working**: uma tool MCP em execução frequentemente é mais lenta que uma tool nativa; a informação específica vale mais que a agregação genérica.
+- **Todas-working é pulse, mix é blink (v0.2.1+)**: inversão deliberada da intuição "mais atividade = mais piscante". A razão: "todas working" é **regime estacionário** (nada novo para olhar — pulse ambiente basta); "mix working + idle" é **transição** (alguma sessão acabou de terminar, vale a pena checar — blink chama mais atenção periférica).
 - **PreCompact < tudo-idle**: compactação é de baixa urgência e apenas informativa, não deve suprimir sinais mais urgentes.
 
 ### 5.8. Envio de comando com throttle

@@ -10,8 +10,8 @@
 //    75  api_outage        MAGENTA_FAST   polling status.claude.com
 //    60  chrome_devtools   BLUE_BLINK     lsof -iTCP:9222 -sTCP:LISTEN
 //    50  mcp               BLUE_PULSE     hook PreToolUse matcher mcp__*
-//    40  sessions:working  GREEN_BLINK    todas as sessões ativas em working
-//    30  sessions:mix      GREEN          working + idle simultâneos
+//    40  sessions:working  GREEN_PULSE    todas as sessões ativas em working
+//    30  sessions:mix      GREEN_BLINK    working + idle simultâneos (transição)
 //    20  precompact        YELLOW_SLOW    hook PreCompact
 //     0  (default)         OFF            nada ativo
 //
@@ -243,12 +243,16 @@ function decideCommand() {
     [ 75, 'MAGENTA_FAST', () => checkApiOutage()],
     [ 60, 'BLUE_BLINK',   () => checkChromeDevtools()],
     [ 50, 'BLUE_PULSE',   () => channels.has('mcp')],
-    [ 40, 'GREEN_BLINK',  () => {
+    [ 40, 'GREEN_PULSE',  () => {
+      // todas as sessões ativas estão trabalhando: regime estacionário,
+      // sem transição recente — pulse (ambiente) em vez de blink (alerta)
       const hasWorking = sessions.some((s) => s.status === 'working')
       const hasIdle = sessions.some((s) => s.status === 'idle')
       return hasWorking && !hasIdle
     }],
-    [ 30, 'GREEN',        () => {
+    [ 30, 'GREEN_BLINK',  () => {
+      // mix working + idle: alguma sessão acabou de terminar, estado de
+      // transição que merece olhar — blink chama mais atenção periférica
       const hasWorking = sessions.some((s) => s.status === 'working')
       const hasIdle = sessions.some((s) => s.status === 'idle')
       return hasWorking && hasIdle
