@@ -28,6 +28,14 @@ Se uma fonte não existir no seu setup (ex.: `claudewatch` não instalado), o ca
 
 > **Interrupt (v0.2.3+)**: o Claude Code não dispara nenhum hook quando você ESC ou Ctrl+C no meio de um turno. Fallback heurístico no daemon: sessão `working` sem atualização por 5 min é tratada como `idle` em memória. O próximo prompt real restaura o estado correto.
 
+## Encapsulamento
+
+Um **case para o RP2040 Zero** está disponível no [meu profile no Makeronline](https://www.makeronline.com/en/model/RP2040%20Zero%20Case/304588.html) (da Anycubic):
+
+| <img width="500" alt="image" src="https://github.com/user-attachments/assets/0714b7c3-569d-43cc-9b69-5ccbd09368bf" /> | <img width="500" alt="image" src="https://github.com/user-attachments/assets/1a170815-3e16-4f2b-b678-e00df2ed84d0" /> |
+|---|---|
+| Case fechado. | RP2040 Zero acomodado no case. |
+
 ## Arquitetura em 30 segundos
 
 ```
