@@ -108,11 +108,12 @@ chmod +x ~/.claude-led/hooks/claude-led-hook.js
 
 ### 3. LaunchAgent (auto-start no login)
 
-Substitua os placeholders no template e carregue:
+Substitua o placeholder `__HOME__` no template e carregue. O `node` é resolvido
+em runtime via shell de login (`/bin/zsh -lc`), então **não** é preciso fixar o
+caminho do binário — atualizar a versão do node (nvm/Homebrew) não quebra o serviço:
 
 ```bash
-NODE_BIN=$(which node)
-sed -e "s|__NODE__|${NODE_BIN}|g" -e "s|__HOME__|${HOME}|g" \
+sed -e "s|__HOME__|${HOME}|g" \
   launchd/com.carromeu.claude-led.plist \
   > ~/Library/LaunchAgents/com.carromeu.claude-led.plist
 

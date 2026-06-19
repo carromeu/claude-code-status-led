@@ -387,7 +387,7 @@ Ao receber `SIGINT` ou `SIGTERM`, o daemon envia `OFF\n` ao firmware antes de en
 
 ### 6.1. macOS — LaunchAgent
 
-Arquivo: `~/Library/LaunchAgents/com.carromeu.claude-led.plist` (gerado a partir do template `launchd/com.carromeu.claude-led.plist` substituindo `__NODE__` e `__HOME__`).
+Arquivo: `~/Library/LaunchAgents/com.carromeu.claude-led.plist` (gerado a partir do template `launchd/com.carromeu.claude-led.plist` substituindo apenas `__HOME__`).
 
 Configuração relevante:
 - **`RunAtLoad = true`**, **`KeepAlive = true`** — inicia no login e reinicia em caso de crash.
@@ -422,15 +422,31 @@ Também é necessário instalar a udev rule `systemd/99-claude-led.rules` em `/e
 
 ### 6.3. Caminho do Node.js
 
-O `ProgramArguments` do plist aponta para um binário absoluto do Node.js (ex.: `/Users/camilo/.nvm/versions/node/v24.14.0/bin/node`). Se o usuário mudar de versão via `nvm`, o plist precisa ser regerado:
+O `ProgramArguments` **não** fixa o binário do Node.js. O daemon é iniciado via
+shell de login:
 
-```bash
-NODE_BIN=$(which node)
-sed -e "s|__NODE__|${NODE_BIN}|g" -e "s|__HOME__|${HOME}|g" \
-  launchd/com.carromeu.claude-led.plist \
-  > ~/Library/LaunchAgents/com.carromeu.claude-led.plist
-launchctl kickstart -k gui/$(id -u)/com.carromeu.claude-led
+```xml
+<array>
+    <string>/bin/zsh</string>
+    <string>-lc</string>
+    <string>exec node "$HOME/.claude-led/host/claude-led-daemon.js"</string>
+</array>
 ```
+
+O `/bin/zsh -lc` reconstrói o `PATH` do usuário (`.zprofile`/`brew shellenv`,
+nvm, etc.) e resolve o `node` em runtime. Assim, trocar a versão do Node — seja
+por `nvm install`/troca de alias, seja por `brew upgrade node` — **não** quebra o
+serviço: não há caminho de versão a manter sincronizado no plist.
+
+> Histórico: até a v0.2.4 o plist apontava para um caminho absoluto versionado
+> (ex.: `~/.nvm/versions/node/v24.14.0/bin/node`). Quando o `nvm` atualizava o
+> Node e removia a versão antiga, o launchd falhava com `exit code 78 (EX_CONFIG)`
+> e entrava em *penalty box*, deixando de respawnar — o daemon morria
+> silenciosamente e o firmware apagava o LED por watchdog. A abordagem via
+> login-shell elimina essa classe de falha.
+
+O `serialport` é um módulo nativo via N-API (prebuilds), compatível entre versões
+recentes do Node sem recompilar.
 
 ---
 

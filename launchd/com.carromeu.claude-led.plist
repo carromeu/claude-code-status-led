@@ -3,11 +3,14 @@
 <!--
   LaunchAgent do daemon claude-led (macOS).
 
+  O daemon é iniciado via shell de login (/bin/zsh -lc), que resolve o `node`
+  do PATH do usuário em runtime — assim atualizações de versão do node
+  (nvm/Homebrew) não quebram o serviço. Não há caminho de node fixo a manter.
+
   Instalação:
-    1. Substitua __NODE__ pelo caminho absoluto do node (`which node`).
-    2. Substitua __HOME__ pelo valor de $HOME.
-    3. Copie para ~/Library/LaunchAgents/com.carromeu.claude-led.plist
-    4. Carregue: launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.carromeu.claude-led.plist
+    1. Substitua __HOME__ pelo valor de $HOME (apenas nos caminhos de log).
+    2. Copie para ~/Library/LaunchAgents/com.carromeu.claude-led.plist
+    3. Carregue: launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.carromeu.claude-led.plist
 
   Descarregar: launchctl bootout gui/$(id -u)/com.carromeu.claude-led
   Reiniciar:   launchctl kickstart -k gui/$(id -u)/com.carromeu.claude-led
@@ -19,8 +22,9 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>__NODE__</string>
-        <string>__HOME__/.claude-led/host/claude-led-daemon.js</string>
+        <string>/bin/zsh</string>
+        <string>-lc</string>
+        <string>exec node "$HOME/.claude-led/host/claude-led-daemon.js"</string>
     </array>
 
     <key>RunAtLoad</key>
